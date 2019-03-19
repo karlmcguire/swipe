@@ -10,6 +10,8 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// Event handles file events. Currently, when a CREATE operation is seen, the
+// .png file is added to the output file. Otherwise, the event is ignored.
 func Event(event fsnotify.Event, ok bool, output *Output) {
 	if !ok || event.Op != fsnotify.Create {
 		return
@@ -32,6 +34,7 @@ func Event(event fsnotify.Event, ok bool, output *Output) {
 	}
 }
 
+// Error is called when there's an error with the file notification loop.
 func Error(err error, ok bool) {
 	if !ok || err == nil {
 		return
@@ -40,6 +43,10 @@ func Error(err error, ok bool) {
 	log.Panicln(err)
 }
 
+// Handle is just an infinite loop that handle file events and errors. Events
+// are sent to Event and errors are sent to Error.
+//
+// Output is the singular output file where the screenshots are stored.
 func Handle(watcher *fsnotify.Watcher, output *Output) {
 	for {
 		select {
@@ -51,11 +58,12 @@ func Handle(watcher *fsnotify.Watcher, output *Output) {
 	}
 }
 
+// Cleanup is ran when the user Ctrl+C's out of the application. It primarily
+// just makes sure the output file is saved to disk.
 func Cleanup(stop chan os.Signal, output *Output) {
 	// wait for sigterm and sigint
 	<-stop
 
-	log.Println("stopping...")
 	output.Save()
 	log.Println("output saved.")
 
@@ -64,6 +72,7 @@ func Cleanup(stop chan os.Signal, output *Output) {
 }
 
 func init() {
+	// verify that the command line arguments are present
 	if len(os.Args) < 3 {
 		log.Fatalln("./swipe [watch dir] [output file]")
 	}
