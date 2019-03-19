@@ -1,58 +1,55 @@
 package main
 
 import (
-	"fmt"
-	"os/user"
+	"log"
 
 	"github.com/fsnotify/fsnotify"
 )
 
+func Event(event fsnotify.Event, ok bool) {
+	if !ok || event.Op != fsnotify.Create {
+		return
+	}
+
+	log.Println(event)
+}
+
+func Error(err error, ok bool) {
+	if !ok || err == nil {
+		return
+	}
+
+	log.Panicln(err)
+}
+
+func Handle(watcher *fsnotify.Watcher) {
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			Event(event, ok)
+		case err, ok := <-watcher.Errors:
+			Error(err, ok)
+		}
+	}
+}
+
 func main() {
-	// start the watcher
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		panic(err)
+	var (
+		watcher *fsnotify.Watcher
+		err     error
+	)
+
+	// initialize watcher
+	if watcher, err = fsnotify.NewWatcher(); err != nil {
+		log.Fatalln(err)
 	}
 	defer watcher.Close()
 
-	// get current user
-	user, err := user.Current()
-	if err != nil {
-		panic(err)
+	// add the directories to watch
+	if err = watcher.Add(PATH_WATCH); err != nil {
+		log.Fatalln(err)
 	}
 
-	// block the app until quit (go routine nonblocking)
-	done := make(chan bool)
-
-	// goroutine for watching the folder
-	go func() {
-		for {
-			select {
-			// handle file event
-			case event, ok := <-watcher.Events:
-				if !ok {
-					continue
-				}
-				if event.Op == fsnotify.Create {
-					// file placed on the desktop
-					fmt.Println(event)
-				}
-			// handle error event
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					continue
-				}
-				fmt.Println("error:", err)
-			}
-		}
-	}()
-
-	// TODO: other operating systems
-	//
-	// watches the current user's desktop directory
-	if err = watcher.Add("/Users/" + user.Username + "/Desktop"); err != nil {
-		panic(err)
-	}
-
-	<-done
+	// handle the events and errors
+	Handle(watcher)
 }
