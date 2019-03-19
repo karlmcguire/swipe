@@ -21,11 +21,11 @@ const (
 		<body>
 	`
 
-	HTML_IMG_HEAD = `<img src="data:image/png;base64,`
-	HTML_IMG_TAIL = `" />`
-
 	HTML_TAIL = `
 		</body>
 	</html>
 	`
+
+	HTML_IMG_HEAD = `<img src="data:image/png;base64,`
+	HTML_IMG_TAIL = `" />`
 )
