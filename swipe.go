@@ -1,26 +1,69 @@
 package main
 
 import (
+	"bytes"
+	"encoding/base64"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/fsnotify/fsnotify"
-	// "github.com/jung-kurt/gofpdf"
 )
 
-// start:
-// 	- scan the directory, add each new file created to pdf
-// stop:
-// 	- finish generating the pdf, print out file location
+// TODO: use dependency injection
+var O = NewOutput("out.html")
+
+type Output struct {
+	Filename string
+	Buffer   bytes.Buffer
+}
+
+func NewOutput(filename string) *Output {
+	o := &Output{
+		Filename: filename,
+	}
+
+	o.Buffer.WriteString(HTML_HEAD)
+
+	return o
+}
+
+func (o *Output) Save() {
+	o.Buffer.WriteString(HTML_TAIL)
+
+	ioutil.WriteFile(o.Filename, o.Buffer.Bytes(), 0644)
+}
+
+func (o *Output) Add(b []byte) error {
+	o.Buffer.WriteString(HTML_IMG_HEAD)
+	o.Buffer.WriteString(base64.StdEncoding.EncodeToString(b))
+	o.Buffer.WriteString(HTML_IMG_TAIL)
+
+	return nil
+}
 
 func Event(event fsnotify.Event, ok bool) {
 	if !ok || event.Op != fsnotify.Create {
 		return
 	}
 
-	log.Println(event.Name[len(event.Name)-4:])
+	// verify that it's a png file
+	if len(event.Name) < 4 || event.Name[len(event.Name)-4:] != ".png" {
+		return
+	}
+
+	// read png data
+	data, err := ioutil.ReadFile(event.Name)
+	if err != nil {
+		log.Panicln(err)
+	}
+
+	// add image to output
+	if err = O.Add(data); err != nil {
+		log.Panicln(err)
+	}
 }
 
 func Error(err error, ok bool) {
@@ -47,6 +90,7 @@ func Cleanup(stop chan os.Signal) {
 	<-stop
 
 	log.Println("stopping")
+	O.Save()
 
 	// exit the application
 	os.Exit(0)
