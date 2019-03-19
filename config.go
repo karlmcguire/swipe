@@ -2,5 +2,5 @@ package main
 
 const (
 	PATH_WATCH = "/Users/karl/Desktop"
-	PATH_MOVE  = "/Users/karl/Swipe"
+	PATH_SWIPE = "/Users/karl/Swipe"
 )
