@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"io/ioutil"
 	"log"
 	"os"
@@ -12,26 +13,28 @@ import (
 
 // Event handles file events. Currently, when a CREATE operation is seen, the
 // .png file is added to the output file. Otherwise, the event is ignored.
-func Event(event fsnotify.Event, ok bool, output *Output) {
-	if !ok || event.Op != fsnotify.Create {
+func Event(eve fsnotify.Event, ok bool, h *Hold) {
+	if !ok || eve.Op != fsnotify.Create {
 		return
 	}
 
 	// verify that it's a png file
-	if len(event.Name) < 4 || event.Name[len(event.Name)-4:] != ".png" {
+	if len(eve.Name) < 4 || eve.Name[len(eve.Name)-4:] != ".png" {
 		return
 	}
 
 	// read png data
-	data, err := ioutil.ReadFile(event.Name)
+	data, err := ioutil.ReadFile(eve.Name)
 	if err != nil {
 		log.Panicln(err)
 	}
 
-	// add image to output
-	if err = output.Add(data); err != nil {
-		log.Panicln(err)
-	}
+	h.Write(HTML_IMG_HEAD)
+	h.Write(base64.StdEncoding.EncodeToString(data))
+	h.Write(HTML_IMG_TAIL)
+	h.Store(os.Args[2])
+
+	log.Println("saved '" + eve.Name + "' to disk.")
 }
 
 // Error is called when there's an error with the file notification loop.
@@ -45,14 +48,12 @@ func Error(err error, ok bool) {
 
 // Handle is just an infinite loop that handle file events and errors. Events
 // are sent to Event and errors are sent to Error.
-//
-// Output is the singular output file where the screenshots are stored.
-func Handle(watcher *fsnotify.Watcher, output *Output) {
+func Handle(w *fsnotify.Watcher, h *Hold) {
 	for {
 		select {
-		case event, ok := <-watcher.Events:
-			Event(event, ok, output)
-		case err, ok := <-watcher.Errors:
+		case eve, ok := <-w.Events:
+			Event(eve, ok, h)
+		case err, ok := <-w.Errors:
 			Error(err, ok)
 		}
 	}
@@ -60,50 +61,47 @@ func Handle(watcher *fsnotify.Watcher, output *Output) {
 
 // Cleanup is ran when the user Ctrl+C's out of the application. It primarily
 // just makes sure the output file is saved to disk.
-func Cleanup(stop chan os.Signal, output *Output) {
-	// wait for sigterm and sigint
-	<-stop
+func Cleanup(s chan os.Signal, h *Hold) {
+	<-s
 
-	output.Save()
-	log.Println("output saved.")
+	// save to disk
+	h.Write(HTML_TAIL)
+	h.Store(os.Args[2])
+	log.Println("saved.")
 
-	// exit the application
 	os.Exit(0)
 }
 
 func init() {
-	// verify that the command line arguments are present
 	if len(os.Args) < 3 {
 		log.Fatalln("./swipe [watch dir] [output file]")
 	}
 }
 
 func main() {
-	var (
-		output  *Output = NewOutput(os.Args[2])
-		watcher *fsnotify.Watcher
-		err     error
-		stop    chan os.Signal = make(chan os.Signal)
-	)
+	h := new(Hold)
+	h.Write(HTML_HEAD)
 
-	// register stop channel with relevant signals
-	signal.Notify(stop, syscall.SIGTERM)
-	signal.Notify(stop, syscall.SIGINT)
+	{
+		s := make(chan os.Signal)
 
-	// cleanup function for program exit
-	go Cleanup(stop, output)
+		signal.Notify(s, syscall.SIGTERM)
+		signal.Notify(s, syscall.SIGINT)
 
-	// initialize watcher
-	if watcher, err = fsnotify.NewWatcher(); err != nil {
-		log.Fatalln(err)
-	}
-	defer watcher.Close()
-
-	// add the directories to watch
-	if err = watcher.Add(os.Args[1]); err != nil {
-		log.Fatalln(err)
+		go Cleanup(s, h)
 	}
 
-	// handle the events and errors
-	Handle(watcher, output)
+	{
+		w, err := fsnotify.NewWatcher()
+		if err != nil {
+			log.Fatalln(err)
+		}
+		defer w.Close()
+
+		if err = w.Add(os.Args[1]); err != nil {
+			log.Fatalln(err)
+		}
+
+		Handle(w, h)
+	}
 }
