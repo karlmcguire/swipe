@@ -8,7 +8,7 @@ const (
 			
 			<style>
 				body {
-					background-color: #f0f0f0;
+					background-color: #fff;
 					margin: 0;
 					padding: 1rem 0;
 				}
